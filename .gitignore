@@ -2,3 +2,7 @@ data/*
 .DS_Store
 
 submissions/*
+
+__pycache__/
+*.pyc
+catboost_info/
