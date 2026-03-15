@@ -570,6 +570,7 @@ def train_lgbm(
 def train_catboost(
     X_train,
     y_train,
+    X_test,
     features,
     iterations=1000,
     learning_rate=0.05,
@@ -589,7 +590,6 @@ def train_catboost(
     model_catboost = catboost.CatBoostRegressor(**catboost_params)
     model_catboost.fit(train_data)
 
-    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
     preds_catboost = model_catboost.predict(X_test[features])
 
     sample_submission = pd.read_csv("data/sample_submission.csv", index_col="ROW_ID")
