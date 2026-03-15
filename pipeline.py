@@ -202,6 +202,7 @@ def lgbm_cv_temporal(
 def catboost_cv(
     X_train,
     y_train,
+    X_test,
     features,
     iterations=1000,
     learning_rate=0.05,
@@ -404,9 +405,11 @@ def find_hyperparameters_lgbm(X_train, y_train, features, temporal=False):
                         see_folds=False,
                     )
                 else:
+                    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
                     _, scores_lgbm = lgbm_cv(
                         X_train,
                         y_train,
+                        X_test,
                         features,
                         num_boost_round=num_boost_round,
                         learning_rate=learning_rate,
@@ -479,9 +482,11 @@ def find_hyperparameters_catboost(X_train, y_train, features, temporal=False):
                         see_folds=False,
                     )
                 else:
+                    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
                     _, scores_catboost = catboost_cv(
                         X_train,
                         y_train,
+                        X_test,
                         features,
                         iterations=iterations,
                         learning_rate=learning_rate,
@@ -523,7 +528,6 @@ def find_hyperparameters_catboost(X_train, y_train, features, temporal=False):
 def train_lgbm(
     X_train,
     y_train,
-    X_test,
     features,
     num_boost_round=500,
     learning_rate=1e-2,
@@ -546,6 +550,8 @@ def train_lgbm(
     NUM_BOOST_ROUND = num_boost_round
 
     model_lgbm = lgbm.train(lgbm_params, train_data, num_boost_round=NUM_BOOST_ROUND)
+
+    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
     preds_lgbm = model_lgbm.predict(X_test[features])
 
     sample_submission = pd.read_csv("data/sample_submission.csv", index_col="ROW_ID")
@@ -580,9 +586,10 @@ def train_catboost(
     }
     
     train_data = catboost.Pool(X_train[features], label=y_train)
-
     model_catboost = catboost.CatBoostRegressor(**catboost_params)
     model_catboost.fit(train_data)
+
+    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
     preds_catboost = model_catboost.predict(X_test[features])
 
     sample_submission = pd.read_csv("data/sample_submission.csv", index_col="ROW_ID")
@@ -604,17 +611,16 @@ def train_catboost(
 
 if __name__ == "__main__":
 
-    temporal = (
-        input("\n Do you want to perform temporal CV? (y/n): ").strip().lower() == "y"
-    )
+    temporal =  False #(
+    #     input("\n Do you want to perform temporal CV? (y/n): ").strip().lower() == "y"
+    # )
     if temporal:
         print("Performing TEMPORAL CV. This may take a while...")
     else:
         print("Performing STANDARD CV. This may take a while...")
 
-    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
     y_train = pd.read_csv("data/y_train.csv", index_col="ROW_ID")
-    sample_submission = pd.read_csv("data/sample_submission.csv", index_col="ROW_ID")
+    X_test = pd.read_csv("data/X_test.csv", index_col="ROW_ID")
 
     if temporal:
         X_train = pd.read_csv("data/X_train_reconstructed.csv", index_col="ROW_ID")
@@ -630,6 +636,12 @@ if __name__ == "__main__":
         X_train, X_test, features
     )
     print("Rowwise features added")
+
+    # now add cross-sectional context features
+    X_train, X_test, features = feature_eng.add_cross_sectional_context_features(
+    X_train, X_test, features
+    )
+    print("Cross-sectional context features added")
 
     if temporal:
         X_train, X_test, features = feature_eng.add_temporal_FE(
@@ -662,7 +674,6 @@ if __name__ == "__main__":
         train_lgbm(
             X_train,
             y_train,
-            X_test,
             features,
             num_boost_round=best_params_lgbm["num_boost_round"],
             learning_rate=best_params_lgbm["learning_rate"],
