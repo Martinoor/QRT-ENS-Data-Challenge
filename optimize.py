@@ -90,8 +90,8 @@ class _Tee:
 SHORT_GRIDS = {
     "catboost": list(itertools.product(
         [5, 6, 7],           # depth          (3 values)
-        [4, 12],             # l2_leaf_reg    (2 values)  → 6 configs
-        [0.03],              # learning_rate  (fixed, explore in long GS)
+        [4, 8, 12],             # l2_leaf_reg    (3 values)  
+        [0.02, 0.03],              # learning_rate  (2 values) → 18 configs
     )),
     "lgbm": list(itertools.product(
         [31, 63],            # num_leaves     (2 values)
@@ -107,8 +107,8 @@ SHORT_GRIDS = {
 LONG_GRIDS = {
     "catboost": list(itertools.product(
         [5, 6, 7],           # depth          (3 values)
-        [3, 8, 15],          # l2_leaf_reg    (3 values)
-        [0.01, 0.02, 0.03],  # learning_rate  (3 values)  → 27 configs
+        [3, 6, 9, 12],          # l2_leaf_reg    (4 values)
+        [0.01, 0.02, 0.03],  # learning_rate  (3 values)  → 36 configs
     )),
     "lgbm": list(itertools.product(
         [31, 63, 127],       # num_leaves     (3 values)
