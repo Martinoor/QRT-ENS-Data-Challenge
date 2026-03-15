@@ -8,10 +8,15 @@ import matplotlib.pyplot as plt
 from sklearn import linear_model
 import lightgbm as lgbm
 import catboost
+try:
+    import xgboost as xgb
+    _XGB_AVAILABLE = True
+except ImportError:
+    _XGB_AVAILABLE = False
 
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, log_loss
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, GroupKFold
 
 import feature_eng
 
@@ -605,6 +610,344 @@ def train_catboost(
         print(f"Predictions saved to submissions/{filename}.csv")
 
 
+
+
+# ---------------------- GROUPKFOLD-BY-TS CV (LEAKAGE-FREE) ----------------------
+
+
+def _ts_group_splits(X_train, n_splits=5):
+    """
+    Returns (train_mask, val_mask) pairs for GroupKFold where each
+    unique timestamp goes to exactly one fold.  This guarantees that
+    no timestamp leaks across train/validation.
+    """
+    ts_values = X_train["TS"].values
+    unique_ts = np.unique(ts_values)
+
+    gkf = GroupKFold(n_splits=n_splits)
+    # groups: one integer per unique_ts index, broadcast to all rows
+    ts_to_idx = {ts: i for i, ts in enumerate(unique_ts)}
+    row_groups = np.array([ts_to_idx[ts] for ts in ts_values])
+
+    for train_idx, val_idx in gkf.split(X_train, groups=row_groups):
+        yield train_idx, val_idx
+
+
+def lgbm_cv_grouped(
+    X_train,
+    y_train,
+    features,
+    n_splits=5,
+    num_boost_round=2000,
+    learning_rate=0.03,
+    num_leaves=63,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    min_child_samples=20,
+    early_stopping_rounds=200,
+    see_folds=True,
+):
+    """
+    LightGBM cross-validation using GroupKFold by timestamp.
+    Uses binary cross-entropy loss for better probability calibration.
+    Returns models, OOF predictions, and per-fold accuracy scores.
+    """
+    features_list = list(features)
+
+    lgbm_params = {
+        "objective": "binary",
+        "metric": "binary_logloss",
+        "num_threads": 50,
+        "seed": 42,
+        "verbosity": -1,
+        "learning_rate": learning_rate,
+        "num_leaves": num_leaves,
+        "subsample": subsample,
+        "colsample_bytree": colsample_bytree,
+        "min_child_samples": min_child_samples,
+    }
+
+    y_bin = (y_train["target"].values > 0).astype(int)
+    oof_preds = np.zeros(len(X_train))
+    scores = []
+    models = []
+
+    for fold_i, (train_idx, val_idx) in enumerate(
+        _ts_group_splits(X_train, n_splits=n_splits)
+    ):
+        X_tr = X_train.iloc[train_idx][features_list]
+        y_tr = y_bin[train_idx]
+        X_val = X_train.iloc[val_idx][features_list]
+        y_val = y_bin[val_idx]
+
+        dtrain = lgbm.Dataset(X_tr, label=y_tr)
+        dval = lgbm.Dataset(X_val, label=y_val, reference=dtrain)
+
+        callbacks = [lgbm.early_stopping(early_stopping_rounds, verbose=False),
+                     lgbm.log_evaluation(-1)]
+
+        model = lgbm.train(
+            lgbm_params,
+            dtrain,
+            num_boost_round=num_boost_round,
+            valid_sets=[dval],
+            callbacks=callbacks,
+        )
+
+        pred_proba = model.predict(X_val)
+        oof_preds[val_idx] = pred_proba
+
+        score = accuracy_score(y_val, (pred_proba > 0.5).astype(int))
+        scores.append(score)
+        models.append(model)
+
+        if see_folds:
+            print(f"  Fold {fold_i + 1}/{n_splits} | acc={score * 100:.2f}% | "
+                  f"best_iter={model.best_iteration}")
+
+    mean_acc = np.mean(scores) * 100
+    std_acc = np.std(scores) * 100
+    oof_acc = accuracy_score(y_bin, (oof_preds > 0.5).astype(int)) * 100
+    print(f"  LGBM GroupKFold | mean={mean_acc:.2f}% +/-{std_acc:.2f}% | "
+          f"OOF={oof_acc:.2f}%")
+
+    return models, oof_preds, scores
+
+
+def catboost_cv_grouped(
+    X_train,
+    y_train,
+    features,
+    n_splits=5,
+    iterations=1800,
+    learning_rate=0.03,
+    depth=6,
+    l2_leaf_reg=8.0,
+    early_stopping_rounds=200,
+    see_folds=True,
+):
+    """
+    CatBoost cross-validation using GroupKFold by timestamp.
+    Uses Logloss for better probability calibration.
+    Returns models, OOF predictions, and per-fold accuracy scores.
+    """
+    features_list = list(features)
+
+    y_bin = (y_train["target"].values > 0).astype(int)
+    oof_preds = np.zeros(len(X_train))
+    scores = []
+    models = []
+
+    for fold_i, (train_idx, val_idx) in enumerate(
+        _ts_group_splits(X_train, n_splits=n_splits)
+    ):
+        X_tr = X_train.iloc[train_idx][features_list]
+        y_tr = y_bin[train_idx]
+        X_val = X_train.iloc[val_idx][features_list]
+        y_val = y_bin[val_idx]
+
+        train_pool = catboost.Pool(X_tr, label=y_tr)
+        val_pool = catboost.Pool(X_val, label=y_val)
+
+        params = {
+            "loss_function": "Logloss",
+            "eval_metric": "Accuracy",
+            "iterations": iterations,
+            "learning_rate": learning_rate,
+            "depth": depth,
+            "l2_leaf_reg": l2_leaf_reg,
+            "random_seed": 42,
+            "verbose": False,
+        }
+
+        model = catboost.CatBoostClassifier(**params)
+        model.fit(
+            train_pool,
+            eval_set=val_pool,
+            early_stopping_rounds=early_stopping_rounds,
+            verbose=False,
+        )
+
+        pred_proba = model.predict_proba(X_val)[:, 1]
+        oof_preds[val_idx] = pred_proba
+
+        score = accuracy_score(y_val, (pred_proba > 0.5).astype(int))
+        scores.append(score)
+        models.append(model)
+
+        if see_folds:
+            print(f"  Fold {fold_i + 1}/{n_splits} | acc={score * 100:.2f}% | "
+                  f"best_iter={model.get_best_iteration()}")
+
+    mean_acc = np.mean(scores) * 100
+    std_acc = np.std(scores) * 100
+    oof_acc = accuracy_score(y_bin, (oof_preds > 0.5).astype(int)) * 100
+    print(f"  CatBoost GroupKFold | mean={mean_acc:.2f}% +/-{std_acc:.2f}% | "
+          f"OOF={oof_acc:.2f}%")
+
+    return models, oof_preds, scores
+
+
+def xgb_cv_grouped(
+    X_train,
+    y_train,
+    features,
+    n_splits=5,
+    n_estimators=2000,
+    learning_rate=0.03,
+    max_depth=6,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    early_stopping_rounds=200,
+    see_folds=True,
+):
+    """
+    XGBoost cross-validation using GroupKFold by timestamp.
+    Returns models, OOF predictions, and per-fold accuracy scores.
+    """
+    if not _XGB_AVAILABLE:
+        raise ImportError("xgboost is not installed. Run: pip install xgboost")
+
+    features_list = list(features)
+    y_bin = (y_train["target"].values > 0).astype(int)
+    oof_preds = np.zeros(len(X_train))
+    scores = []
+    models = []
+
+    for fold_i, (train_idx, val_idx) in enumerate(
+        _ts_group_splits(X_train, n_splits=n_splits)
+    ):
+        X_tr = X_train.iloc[train_idx][features_list]
+        y_tr = y_bin[train_idx]
+        X_val = X_train.iloc[val_idx][features_list]
+        y_val = y_bin[val_idx]
+
+        model = xgb.XGBClassifier(
+            objective="binary:logistic",
+            eval_metric="logloss",
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            early_stopping_rounds=early_stopping_rounds,
+            use_label_encoder=False,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+        )
+        model.fit(
+            X_tr, y_tr,
+            eval_set=[(X_val, y_val)],
+            verbose=False,
+        )
+
+        pred_proba = model.predict_proba(X_val)[:, 1]
+        oof_preds[val_idx] = pred_proba
+
+        score = accuracy_score(y_val, (pred_proba > 0.5).astype(int))
+        scores.append(score)
+        models.append(model)
+
+        if see_folds:
+            print(f"  Fold {fold_i + 1}/{n_splits} | acc={score * 100:.2f}%")
+
+    mean_acc = np.mean(scores) * 100
+    std_acc = np.std(scores) * 100
+    oof_acc = accuracy_score(y_bin, (oof_preds > 0.5).astype(int)) * 100
+    print(f"  XGBoost GroupKFold | mean={mean_acc:.2f}% +/-{std_acc:.2f}% | "
+          f"OOF={oof_acc:.2f}%")
+
+    return models, oof_preds, scores
+
+
+# ---------------------- ENSEMBLE UTILS ----------------------
+
+
+def find_optimal_threshold(oof_preds, y_train):
+    """
+    Grid-search the decision threshold on OOF predictions.
+    Returns the threshold with highest OOF accuracy.
+    """
+    y_bin = (y_train["target"].values > 0).astype(int)
+    best_thresh = 0.5
+    best_acc = 0.0
+
+    for t in np.arange(0.30, 0.71, 0.01):
+        acc = accuracy_score(y_bin, (oof_preds >= t).astype(int))
+        if acc > best_acc:
+            best_acc = acc
+            best_thresh = t
+
+    print(f"  Optimal threshold={best_thresh:.2f} | OOF acc={best_acc * 100:.2f}%")
+    return best_thresh, best_acc
+
+
+def find_optimal_blend(oof_list, y_train, model_names=None):
+    """
+    Grid-search blend weights over OOF probability arrays.
+    oof_list: list of 1D arrays of OOF probabilities, one per model.
+    Returns optimal weights and the blended OOF accuracy.
+    """
+    y_bin = (y_train["target"].values > 0).astype(int)
+    n_models = len(oof_list)
+    best_acc = 0.0
+    best_weights = [1.0 / n_models] * n_models
+
+    if n_models == 1:
+        return best_weights, accuracy_score(y_bin, (oof_list[0] > 0.5).astype(int))
+
+    # For 2–4 models, exhaustive search over 0.05 increments
+    from itertools import product as iproduct
+
+    steps = np.arange(0, 1.05, 0.05)
+    for combo in iproduct(steps, repeat=n_models):
+        total = sum(combo)
+        if abs(total) < 1e-6:
+            continue
+        w = np.array(combo) / total
+        blend = sum(w[i] * oof_list[i] for i in range(n_models))
+        acc = accuracy_score(y_bin, (blend > 0.5).astype(int))
+        if acc > best_acc:
+            best_acc = acc
+            best_weights = list(w)
+
+    if model_names is None:
+        model_names = [f"model_{i}" for i in range(n_models)]
+    weight_str = ", ".join(
+        f"{model_names[i]}={best_weights[i]:.2f}" for i in range(n_models)
+    )
+    print(f"  Best blend: {weight_str} | OOF acc={best_acc * 100:.2f}%")
+    return best_weights, best_acc
+
+
+def predict_ensemble(models_list, X_test, features, weights, use_catboost_proba=True):
+    """
+    Generate blended test predictions from multiple model lists.
+
+    models_list: list of (model_list, model_type) where model_type is
+                 'lgbm', 'catboost', or 'xgb'.
+    weights: blend weights (one per model_list entry).
+    Returns binary predictions (0/1) and blended probabilities.
+    """
+    features_list = list(features)
+    blend = np.zeros(len(X_test))
+
+    for (model_list, model_type), w in zip(models_list, weights):
+        fold_preds = []
+        for model in model_list:
+            if model_type == "lgbm":
+                p = model.predict(X_test[features_list])
+            elif model_type == "catboost":
+                p = model.predict_proba(X_test[features_list])[:, 1]
+            elif model_type == "xgb":
+                p = model.predict_proba(X_test[features_list])[:, 1]
+            else:
+                raise ValueError(f"Unknown model_type: {model_type}")
+            fold_preds.append(p)
+        blend += w * np.mean(fold_preds, axis=0)
+
+    return (blend > 0.5).astype(int), blend
 
 
 # ---------------------------- MAIN EXECUTION -----------------------------
