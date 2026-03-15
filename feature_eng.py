@@ -293,6 +293,168 @@ def add_temporal_FE(X_train, X_test, features):
     return X_train, X_test, features
 
 
+# ------------------ Advanced signal features ------------------
+
+def add_advanced_features(X_train, X_test, features):
+    """
+    Advanced feature engineering:
+    - EMA of returns (exponential decay weights)
+    - Return autocorrelation (AR1 coefficient)
+    - Skewness and excess kurtosis of returns
+    - Cumulative compounded return
+    - Volume-return alignment ratio
+    - Realised volatility (annualised)
+    - Return / vol ratio (Sharpe-like per row)
+    - Short-term reversal signal (RET_1 vs 5-day average)
+    """
+    import numpy as np
+
+    X_train = X_train.copy()
+    X_test = X_test.copy()
+    features = list(features)
+
+    ret_cols = [f"RET_{i}" for i in range(1, 21)
+                if f"RET_{i}" in X_train.columns and f"RET_{i}" in X_test.columns]
+    vol_cols = [f"SIGNED_VOLUME_{i}" for i in range(1, 21)
+                if f"SIGNED_VOLUME_{i}" in X_train.columns and f"SIGNED_VOLUME_{i}" in X_test.columns]
+
+    def _add(df):
+        df = df.copy()
+        new_feats = []
+        ret_mat = df[ret_cols].to_numpy(dtype=float)   # shape (n, 20)
+        n = len(ret_cols)
+
+        # ---- EMA returns (span=5 and span=10) ----
+        for span in [5, 10]:
+            alpha = 2.0 / (span + 1)
+            weights = np.array([(1 - alpha) ** i for i in range(n)])
+            weights = weights / weights.sum()
+            col = f"ret_ema_{span}"
+            if col not in df.columns:
+                df[col] = ret_mat @ weights
+                new_feats.append(col)
+
+        # ---- AR(1) coefficient per row ----
+        col = "ret_ar1"
+        if col not in df.columns and n >= 2:
+            # Regress RET_{t} on RET_{t-1}: use lags 1..19 as X, lags 2..20 as Y
+            x = ret_mat[:, :-1]   # 19 values (RET_1..RET_19)
+            y = ret_mat[:, 1:]    # 19 values (RET_2..RET_20)
+            x_demean = x - x.mean(axis=1, keepdims=True)
+            y_demean = y - y.mean(axis=1, keepdims=True)
+            num = (x_demean * y_demean).sum(axis=1)
+            den = (x_demean ** 2).sum(axis=1)
+            ar1 = np.where(den != 0, num / den, 0.0)
+            df[col] = ar1
+            new_feats.append(col)
+
+        # ---- Skewness of returns ----
+        col = "ret_skew_20"
+        if col not in df.columns:
+            mu = ret_mat.mean(axis=1, keepdims=True)
+            sigma = ret_mat.std(axis=1, keepdims=True)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                skew = np.where(
+                    sigma.squeeze() > 0,
+                    ((ret_mat - mu) ** 3).mean(axis=1) / (sigma.squeeze() ** 3),
+                    0.0,
+                )
+            df[col] = skew
+            new_feats.append(col)
+
+        # ---- Excess kurtosis ----
+        col = "ret_kurt_20"
+        if col not in df.columns:
+            mu = ret_mat.mean(axis=1, keepdims=True)
+            sigma = ret_mat.std(axis=1, keepdims=True)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                kurt = np.where(
+                    sigma.squeeze() > 0,
+                    ((ret_mat - mu) ** 4).mean(axis=1) / (sigma.squeeze() ** 4) - 3.0,
+                    0.0,
+                )
+            df[col] = kurt
+            new_feats.append(col)
+
+        # ---- Cumulative compounded return ----
+        col = "ret_cum_20"
+        if col not in df.columns:
+            # product of (1 + r_i) - 1; clip to avoid extreme values
+            clipped = np.clip(ret_mat, -0.5, 0.5)
+            df[col] = np.prod(1.0 + clipped, axis=1) - 1.0
+            new_feats.append(col)
+
+        # ---- Realised vol (std of 20 daily returns) ----
+        col = "ret_realised_vol_20"
+        if col not in df.columns:
+            df[col] = ret_mat.std(axis=1)
+            new_feats.append(col)
+
+        # ---- Sharpe-like: mean / std ----
+        col = "ret_sharpe_20"
+        if col not in df.columns:
+            mu = ret_mat.mean(axis=1)
+            sigma = ret_mat.std(axis=1)
+            df[col] = np.where(sigma > 0, mu / sigma, 0.0)
+            new_feats.append(col)
+
+        # ---- Short-term reversal: RET_1 relative to 5-day average ----
+        col = "ret_reversal_1v5"
+        if col not in df.columns and "RET_1" in df.columns:
+            mean5 = ret_mat[:, :5].mean(axis=1)
+            df[col] = df["RET_1"].values - mean5
+            new_feats.append(col)
+
+        # ---- Volume-return alignment (dot product sign / |magnitude|) ----
+        if vol_cols and len(vol_cols) == len(ret_cols):
+            col = "vol_ret_alignment"
+            if col not in df.columns:
+                vol_mat = df[vol_cols].to_numpy(dtype=float)
+                alignment = (np.sign(vol_mat) == np.sign(ret_mat)).mean(axis=1)
+                df[col] = alignment
+                new_feats.append(col)
+
+            col = "vol_ret_dot"
+            if col not in df.columns:
+                vol_mat = df[vol_cols].to_numpy(dtype=float)
+                df[col] = (ret_mat * vol_mat).sum(axis=1)
+                new_feats.append(col)
+
+        # ---- Up-day count ratio ----
+        col = "ret_up_ratio_20"
+        if col not in df.columns:
+            df[col] = (ret_mat > 0).mean(axis=1)
+            new_feats.append(col)
+
+        # ---- Gain-to-pain ratio: mean(pos returns) / |mean(neg returns)| ----
+        col = "ret_gain_pain_20"
+        if col not in df.columns:
+            pos_mean = np.where(
+                (ret_mat > 0).any(axis=1),
+                np.where(ret_mat > 0, ret_mat, 0.0).sum(axis=1)
+                / np.maximum((ret_mat > 0).sum(axis=1), 1),
+                0.0,
+            )
+            neg_mean = np.where(
+                (ret_mat < 0).any(axis=1),
+                np.abs(np.where(ret_mat < 0, ret_mat, 0.0).sum(axis=1))
+                / np.maximum((ret_mat < 0).sum(axis=1), 1),
+                1e-8,
+            )
+            df[col] = np.where(neg_mean > 0, pos_mean / neg_mean, 0.0)
+            new_feats.append(col)
+
+        return df, new_feats
+
+    X_train, nf_train = _add(X_train)
+    X_test, nf_test = _add(X_test)
+
+    new_features = [c for c in nf_train if c in X_test.columns]
+    features = features + [c for c in new_features if c not in features]
+
+    return X_train, X_test, features
+
+
 # ------------------ Cross-sectional context features ------------------
 
 
