@@ -138,14 +138,18 @@ def load_data(temporal: bool = False):
 
 
 def build_features(X_train, X_test, temporal: bool = False):
+    """
+    Returns X_train, X_test, features_cat, features_all.
+
+    features_cat : feature list for CatBoost (no advanced features — they hurt CB)
+    features_all : feature list for LGBM / XGBoost (includes advanced features)
+    Both lists share the same underlying DataFrame columns.
+    """
     print("  Building benchmark features …")
     X_train, X_test, features = feature_eng.FE_benchmark(X_train, X_test)
 
     print("  Building rowwise features …")
     X_train, X_test, features = feature_eng.add_rowwise_features(X_train, X_test, features)
-
-    print("  Building advanced signal features …")
-    X_train, X_test, features = feature_eng.add_advanced_features(X_train, X_test, features)
 
     if temporal:
         print("  Building temporal features …")
@@ -156,8 +160,14 @@ def build_features(X_train, X_test, temporal: bool = False):
         X_train, X_test, features
     )
 
-    print(f"  Total features: {len(features)}")
-    return X_train, X_test, features
+    # CatBoost stops here — advanced features degrade its performance
+    features_cat = list(features)
+
+    print("  Building advanced signal features (LGBM / XGBoost only) …")
+    X_train, X_test, features_all = feature_eng.add_advanced_features(X_train, X_test, features)
+
+    print(f"  Features (CatBoost): {len(features_cat)}  |  Features (LGBM/XGB): {len(features_all)}")
+    return X_train, X_test, features_cat, features_all
 
 
 def save_submission(preds, index, filename="submission_optimized.csv"):
@@ -174,7 +184,8 @@ def save_submission(preds, index, filename="submission_optimized.csv"):
 def run_grid_search(
     X_train,
     y_train,
-    features,
+    features_cat,
+    features_all,
     mode: str = "short",
     use_xgb: bool = True,
 ):
@@ -183,6 +194,8 @@ def run_grid_search(
 
     Parameters
     ----------
+    features_cat : feature list for CatBoost (no advanced features)
+    features_all : feature list for LGBM / XGBoost (includes advanced features)
     mode : 'short' or 'long'
     use_xgb : if False, XGB grid is skipped even in long mode.
 
@@ -211,7 +224,7 @@ def run_grid_search(
             label = f"depth={depth}, l2={l2}, lr={lr}"
             print(f"  [{idx:02d}/{len(grids['catboost'])}]  {label} …", flush=True)
             _, oof, scores = pl.catboost_cv_grouped(
-                X_train, y_train, features,
+                X_train, y_train, features_cat,
                 n_splits=n_splits_gs,
                 iterations=2000,
                 learning_rate=lr,
@@ -254,7 +267,7 @@ def run_grid_search(
             label = f"num_leaves={num_leaves}, lr={lr}, sub={subsample}"
             print(f"  [{idx:02d}/{len(grids['lgbm'])}]  {label} …", flush=True)
             _, oof, scores = pl.lgbm_cv_grouped(
-                X_train, y_train, features,
+                X_train, y_train, features_all,
                 n_splits=n_splits_gs,
                 num_boost_round=3000,
                 learning_rate=lr,
@@ -299,7 +312,7 @@ def run_grid_search(
             label = f"depth={depth}, lr={lr}, sub={subsample}"
             print(f"  [{idx:02d}/{len(grids['xgb'])}]  {label} …", flush=True)
             _, oof, scores = pl.xgb_cv_grouped(
-                X_train, y_train, features,
+                X_train, y_train, features_all,
                 n_splits=n_splits_gs,
                 n_estimators=3000,
                 learning_rate=lr,
@@ -411,7 +424,7 @@ def _run(args, use_xgb):
     # 2. Feature engineering
     # ------------------------------------------------------------------
     print("\n=== Feature engineering ===")
-    X_train, X_test, features = build_features(X_train, X_test, temporal=args.temporal)
+    X_train, X_test, features_cat, features_all = build_features(X_train, X_test, temporal=args.temporal)
 
     # ------------------------------------------------------------------
     # 3. Grid search (optional)
@@ -423,7 +436,7 @@ def _run(args, use_xgb):
     if args.gs or args.long_gs:
         gs_mode = "long" if args.long_gs else "short"
         best_cat, best_lgbm, best_xgb = run_grid_search(
-            X_train, y_train, features,
+            X_train, y_train, features_cat, features_all,
             mode=gs_mode,
             use_xgb=use_xgb,
         )
@@ -441,7 +454,7 @@ def _run(args, use_xgb):
     print("\n=== Final CV  (LightGBM) ===")
     print(f"  params: {lgbm_params}")
     lgbm_models, lgbm_oof, lgbm_scores = pl.lgbm_cv_grouped(
-        X_train, y_train, features,
+        X_train, y_train, features_all,
         n_splits=args.n_splits,
         early_stopping_rounds=200,
         see_folds=True,
@@ -451,7 +464,7 @@ def _run(args, use_xgb):
     print("\n=== Final CV  (CatBoost) ===")
     print(f"  params: {cat_params}")
     cat_models, cat_oof, cat_scores = pl.catboost_cv_grouped(
-        X_train, y_train, features,
+        X_train, y_train, features_cat,
         n_splits=args.n_splits,
         early_stopping_rounds=200,
         see_folds=True,
@@ -463,7 +476,7 @@ def _run(args, use_xgb):
         print("\n=== Final CV  (XGBoost) ===")
         print(f"  params: {xgb_params}")
         xgb_models, xgb_oof, xgb_scores = pl.xgb_cv_grouped(
-            X_train, y_train, features,
+            X_train, y_train, features_all,
             n_splits=args.n_splits,
             early_stopping_rounds=200,
             see_folds=True,
@@ -493,11 +506,14 @@ def _run(args, use_xgb):
     # 7. Test predictions
     # ------------------------------------------------------------------
     print("\n=== Test predictions ===")
-    models_list = [(lgbm_models, "lgbm"), (cat_models, "catboost")]
+    models_list = [
+        (lgbm_models, "lgbm", features_all),
+        (cat_models, "catboost", features_cat),
+    ]
     if use_xgb and xgb_models is not None:
-        models_list.append((xgb_models, "xgb"))
+        models_list.append((xgb_models, "xgb", features_all))
 
-    _, test_proba = pl.predict_ensemble(models_list, X_test, features, best_weights)
+    _, test_proba = pl.predict_ensemble(models_list, X_test, features_cat, best_weights)
     test_preds = (test_proba >= best_thresh).astype(int)
     print(f"  Positive prediction rate: {test_preds.mean() * 100:.1f}%")
 
