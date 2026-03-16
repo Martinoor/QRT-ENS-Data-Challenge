@@ -925,23 +925,27 @@ def predict_ensemble(models_list, X_test, features, weights, use_catboost_proba=
     """
     Generate blended test predictions from multiple model lists.
 
-    models_list: list of (model_list, model_type) where model_type is
-                 'lgbm', 'catboost', or 'xgb'.
+    models_list: list of (model_list, model_type, feat_list) where feat_list
+                 is the feature list for that model.  For backward compatibility
+                 the 3rd element is optional; if omitted, the shared `features`
+                 argument is used.
     weights: blend weights (one per model_list entry).
     Returns binary predictions (0/1) and blended probabilities.
     """
-    features_list = list(features)
+    default_features = list(features)
     blend = np.zeros(len(X_test))
 
-    for (model_list, model_type), w in zip(models_list, weights):
+    for entry, w in zip(models_list, weights):
+        model_list, model_type = entry[0], entry[1]
+        feat = list(entry[2]) if len(entry) > 2 else default_features
         fold_preds = []
         for model in model_list:
             if model_type == "lgbm":
-                p = model.predict(X_test[features_list])
+                p = model.predict(X_test[feat])
             elif model_type == "catboost":
-                p = model.predict_proba(X_test[features_list])[:, 1]
+                p = model.predict_proba(X_test[feat])[:, 1]
             elif model_type == "xgb":
-                p = model.predict_proba(X_test[features_list])[:, 1]
+                p = model.predict_proba(X_test[feat])[:, 1]
             else:
                 raise ValueError(f"Unknown model_type: {model_type}")
             fold_preds.append(p)
