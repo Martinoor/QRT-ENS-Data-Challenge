@@ -86,7 +86,7 @@ class _Tee:
 
 # Short grid search (~1-1.5 h).
 # Uses 3-fold CV to keep each config cheap.
-# CatBoost: 6 configs  |  LGBM: 4 configs  |  XGB: none
+# CatBoost: 18 configs  |  LGBM: 4 configs  |  XGB: none
 SHORT_GRIDS = {
     "catboost": list(itertools.product(
         [5, 6, 7],           # depth          (3 values)
@@ -103,12 +103,12 @@ SHORT_GRIDS = {
 
 # Long grid search (~8-10 h).
 # Uses 5-fold CV for more reliable estimates.
-# CatBoost: 18 configs  |  LGBM: 12 configs  |  XGB: 8 configs
+# CatBoost: 36 configs  |  LGBM: 12 configs  |  XGB: 8 configs
 LONG_GRIDS = {
     "catboost": list(itertools.product(
-        [5, 6, 7],           # depth          (3 values)
+        [4, 5, 6, 7],           # depth          (4 values)
         [3, 6, 9, 12],          # l2_leaf_reg    (4 values)
-        [0.01, 0.02, 0.03],  # learning_rate  (3 values)  → 36 configs
+        [0.01, 0.02, 0.025, 0.03],  # learning_rate  (4 values)  → 64 configs
     )),
     "lgbm": list(itertools.product(
         [31, 63, 127],       # num_leaves     (3 values)

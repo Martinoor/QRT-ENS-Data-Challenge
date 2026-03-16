@@ -141,8 +141,9 @@
 ######################################################################
 
 
+
 ######################################################################
-# RUN STARTED  2026-03-15 21:52:27
+# RUN STARTED  2026-03-15 22:07:13
 # FLAGS: --gs --n-splits 5
 ######################################################################
 
@@ -158,30 +159,67 @@
 
 ============================================================
   GRID SEARCH  mode=short  cv_folds=3
-  CatBoost configs : 6
+  CatBoost configs : 18
   LGBM configs     : 4
   XGB configs      : 0
 ============================================================
 
---- CatBoost grid (6 configs) ---
-  [01/6]  depth=5, l2=4, lr=0.03 …
+--- CatBoost grid (18 configs) ---
+  [01/18]  depth=5, l2=4, lr=0.02 …
+  CatBoost GroupKFold | mean=52.53% +/-0.20% | OOF=52.53%
+         mean_fold=52.53%  oof=52.53%
+         *** new best CatBoost ***
+  [02/18]  depth=5, l2=4, lr=0.03 …
   CatBoost GroupKFold | mean=52.55% +/-0.22% | OOF=52.55%
          mean_fold=52.55%  oof=52.55%
          *** new best CatBoost ***
-  [02/6]  depth=5, l2=12, lr=0.03 …
+  [03/18]  depth=5, l2=8, lr=0.02 …
+  CatBoost GroupKFold | mean=52.49% +/-0.20% | OOF=52.49%
+         mean_fold=52.49%  oof=52.49%
+  [04/18]  depth=5, l2=8, lr=0.03 …
+  CatBoost GroupKFold | mean=52.48% +/-0.23% | OOF=52.48%
+         mean_fold=52.48%  oof=52.48%
+  [05/18]  depth=5, l2=12, lr=0.02 …
+  CatBoost GroupKFold | mean=52.54% +/-0.27% | OOF=52.54%
+         mean_fold=52.54%  oof=52.54%
+  [06/18]  depth=5, l2=12, lr=0.03 …
   CatBoost GroupKFold | mean=52.61% +/-0.29% | OOF=52.61%
          mean_fold=52.61%  oof=52.61%
          *** new best CatBoost ***
-  [03/6]  depth=6, l2=4, lr=0.03 …
+  [07/18]  depth=6, l2=4, lr=0.02 …
+  CatBoost GroupKFold | mean=52.51% +/-0.28% | OOF=52.51%
+         mean_fold=52.51%  oof=52.51%
+  [08/18]  depth=6, l2=4, lr=0.03 …
   CatBoost GroupKFold | mean=52.56% +/-0.23% | OOF=52.56%
          mean_fold=52.56%  oof=52.56%
-  [04/6]  depth=6, l2=12, lr=0.03 …
+  [09/18]  depth=6, l2=8, lr=0.02 …
+  CatBoost GroupKFold | mean=52.54% +/-0.27% | OOF=52.54%
+         mean_fold=52.54%  oof=52.54%
+  [10/18]  depth=6, l2=8, lr=0.03 …
+  CatBoost GroupKFold | mean=52.52% +/-0.18% | OOF=52.52%
+         mean_fold=52.52%  oof=52.52%
+  [11/18]  depth=6, l2=12, lr=0.02 …
+  CatBoost GroupKFold | mean=52.59% +/-0.30% | OOF=52.59%
+         mean_fold=52.59%  oof=52.59%
+  [12/18]  depth=6, l2=12, lr=0.03 …
   CatBoost GroupKFold | mean=52.55% +/-0.23% | OOF=52.55%
          mean_fold=52.55%  oof=52.55%
-  [05/6]  depth=7, l2=4, lr=0.03 …
+  [13/18]  depth=7, l2=4, lr=0.02 …
+  CatBoost GroupKFold | mean=52.58% +/-0.25% | OOF=52.58%
+         mean_fold=52.58%  oof=52.58%
+  [14/18]  depth=7, l2=4, lr=0.03 …
   CatBoost GroupKFold | mean=52.50% +/-0.25% | OOF=52.50%
          mean_fold=52.50%  oof=52.50%
-  [06/6]  depth=7, l2=12, lr=0.03 …
+  [15/18]  depth=7, l2=8, lr=0.02 …
+  CatBoost GroupKFold | mean=52.50% +/-0.21% | OOF=52.50%
+         mean_fold=52.50%  oof=52.50%
+  [16/18]  depth=7, l2=8, lr=0.03 …
+  CatBoost GroupKFold | mean=52.46% +/-0.13% | OOF=52.46%
+         mean_fold=52.46%  oof=52.46%
+  [17/18]  depth=7, l2=12, lr=0.02 …
+  CatBoost GroupKFold | mean=52.49% +/-0.23% | OOF=52.49%
+         mean_fold=52.49%  oof=52.49%
+  [18/18]  depth=7, l2=12, lr=0.03 …
   CatBoost GroupKFold | mean=52.53% +/-0.19% | OOF=52.53%
          mean_fold=52.53%  oof=52.53%
 
@@ -189,11 +227,23 @@
 
   CatBoost ranking:
     depth=5 l2=12 lr=0.03  oof=52.61%  mean_fold=52.61%
+    depth=6 l2=12 lr=0.02  oof=52.59%  mean_fold=52.59%
+    depth=7 l2=4 lr=0.02  oof=52.58%  mean_fold=52.58%
     depth=6 l2=4 lr=0.03  oof=52.56%  mean_fold=52.56%
     depth=5 l2=4 lr=0.03  oof=52.55%  mean_fold=52.55%
     depth=6 l2=12 lr=0.03  oof=52.55%  mean_fold=52.55%
+    depth=5 l2=12 lr=0.02  oof=52.54%  mean_fold=52.54%
+    depth=6 l2=8 lr=0.02  oof=52.54%  mean_fold=52.54%
     depth=7 l2=12 lr=0.03  oof=52.53%  mean_fold=52.53%
+    depth=5 l2=4 lr=0.02  oof=52.53%  mean_fold=52.53%
+    depth=6 l2=8 lr=0.03  oof=52.52%  mean_fold=52.52%
+    depth=6 l2=4 lr=0.02  oof=52.51%  mean_fold=52.51%
+    depth=7 l2=8 lr=0.02  oof=52.50%  mean_fold=52.50%
     depth=7 l2=4 lr=0.03  oof=52.50%  mean_fold=52.50%
+    depth=7 l2=12 lr=0.02  oof=52.49%  mean_fold=52.49%
+    depth=5 l2=8 lr=0.02  oof=52.49%  mean_fold=52.49%
+    depth=5 l2=8 lr=0.03  oof=52.48%  mean_fold=52.48%
+    depth=7 l2=8 lr=0.03  oof=52.46%  mean_fold=52.46%
 
 --- LGBM grid (4 configs) ---
   [01/4]  num_leaves=31, lr=0.02, sub=0.8 …
@@ -207,3 +257,78 @@
   LGBM GroupKFold | mean=52.28% +/-0.23% | OOF=52.28%
          mean_fold=52.28%  oof=52.28%
   [04/4]  num_leaves=63, lr=0.03, sub=0.8 …
+  LGBM GroupKFold | mean=52.23% +/-0.24% | OOF=52.23%
+         mean_fold=52.23%  oof=52.23%
+
+  Best LGBM: {'num_leaves': 31, 'learning_rate': 0.02, 'subsample': 0.8}  oof_acc=52.31%
+
+  LGBM ranking:
+    leaves=31 lr=0.02 sub=0.8  oof=52.31%  mean_fold=52.31%
+    leaves=31 lr=0.03 sub=0.8  oof=52.28%  mean_fold=52.28%
+    leaves=63 lr=0.02 sub=0.8  oof=52.28%  mean_fold=52.28%
+    leaves=63 lr=0.03 sub=0.8  oof=52.23%  mean_fold=52.23%
+
+============================================================
+  GRID SEARCH COMPLETE
+  Best CatBoost : {'depth': 5, 'l2_leaf_reg': 12, 'learning_rate': 0.03}  (52.61%)
+  Best LGBM     : {'num_leaves': 31, 'learning_rate': 0.02, 'subsample': 0.8}  (52.31%)
+============================================================
+
+=== Final CV  (LightGBM) ===
+  params: {'num_boost_round': 3000, 'learning_rate': 0.02, 'num_leaves': 31, 'subsample': 0.8, 'colsample_bytree': 0.8, 'min_child_samples': 20}
+  Fold 1/5 | acc=51.68% | best_iter=79
+  Fold 2/5 | acc=52.71% | best_iter=120
+  Fold 3/5 | acc=51.91% | best_iter=168
+  Fold 4/5 | acc=52.60% | best_iter=105
+  Fold 5/5 | acc=52.54% | best_iter=252
+  LGBM GroupKFold | mean=52.29% +/-0.41% | OOF=52.29%
+
+=== Final CV  (CatBoost) ===
+  params: {'iterations': 2000, 'learning_rate': 0.03, 'depth': 5, 'l2_leaf_reg': 12}
+  Fold 1/5 | acc=51.87% | best_iter=1
+  Fold 2/5 | acc=52.88% | best_iter=319
+  Fold 3/5 | acc=52.46% | best_iter=476
+  Fold 4/5 | acc=52.94% | best_iter=35
+  Fold 5/5 | acc=52.74% | best_iter=485
+  CatBoost GroupKFold | mean=52.58% +/-0.39% | OOF=52.58%
+
+=== Final CV  (XGBoost) ===
+  params: {'n_estimators': 3000, 'learning_rate': 0.02, 'max_depth': 6, 'subsample': 0.8, 'colsample_bytree': 0.8}
+  Fold 1/5 | acc=51.70%
+  Fold 2/5 | acc=52.78%
+  Fold 3/5 | acc=51.99%
+  Fold 4/5 | acc=52.75%
+  Fold 5/5 | acc=52.45%
+  XGBoost GroupKFold | mean=52.33% +/-0.43% | OOF=52.33%
+
+=== Optimal ensemble blend ===
+  Best blend: lgbm=0.00, catboost=1.00, xgb=0.00 | OOF acc=52.58%
+
+=== Optimal decision threshold ===
+  Optimal threshold=0.50 | OOF acc=52.58%
+
+=== Test predictions ===
+  Positive prediction rate: 61.8%
+
+=== Per-group OOF accuracy ===
+  GROUP=1: 52.77%  (n=100170)
+  GROUP=2: 52.67%  (n=134928)
+  GROUP=3: 52.33%  (n=168913)
+  GROUP=4: 52.65%  (n=123062)
+
+=== Summary ===
+  LGBM OOF accuracy:     52.29%
+  CatBoost OOF accuracy: 52.58%
+  XGBoost OOF accuracy:  52.33%
+  Best blend:  lgbm=0.00, catboost=1.00, xgb=0.00
+  Best thresh: 0.50
+  Blended OOF accuracy (at thresh): 52.58%
+
+  Final CatBoost params : {'iterations': 2000, 'learning_rate': 0.03, 'depth': 5, 'l2_leaf_reg': 12}
+  Final LGBM params     : {'num_boost_round': 3000, 'learning_rate': 0.02, 'num_leaves': 31, 'subsample': 0.8, 'colsample_bytree': 0.8, 'min_child_samples': 20}
+  Final XGBoost params  : {'n_estimators': 3000, 'learning_rate': 0.02, 'max_depth': 6, 'subsample': 0.8, 'colsample_bytree': 0.8}
+  Submission saved → submissions/submission_optimized_gs-short.csv
+
+# RUN FINISHED  2026-03-15 22:44:01
+######################################################################
+
