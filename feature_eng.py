@@ -518,23 +518,23 @@ def add_cross_sectional_context_features(
         return z.fillna(0.0)
 
     def _add_context(df):
-        df = df.copy()
+        new_cols = {}
         new_features = []
 
         # Timestamp-level structural features
         ts_size = df.groupby("TS")["TS"].transform("size")
         if "ts_n_allocations" not in df.columns:
-            df["ts_n_allocations"] = ts_size.astype(float)
+            new_cols["ts_n_allocations"] = ts_size.astype(float)
             new_features.append("ts_n_allocations")
 
         if add_group_context and "GROUP" in df.columns:
             ts_group_size = df.groupby(["TS", "GROUP"])["TS"].transform("size")
             if "ts_group_size" not in df.columns:
-                df["ts_group_size"] = ts_group_size.astype(float)
+                new_cols["ts_group_size"] = ts_group_size.astype(float)
                 new_features.append("ts_group_size")
 
             if "ts_group_share" not in df.columns:
-                df["ts_group_share"] = (ts_group_size / ts_size).astype(float)
+                new_cols["ts_group_share"] = (ts_group_size / ts_size).astype(float)
                 new_features.append("ts_group_share")
 
         for col in usable_cols:
@@ -549,19 +549,19 @@ def add_cross_sectional_context_features(
             disp_name = f"{col}_ts_dispersion"
 
             if diff_name not in df.columns:
-                df[diff_name] = df[col] - ts_mean
+                new_cols[diff_name] = (df[col] - ts_mean).astype(float)
                 new_features.append(diff_name)
 
             if z_name not in df.columns:
-                df[z_name] = _safe_zscore(df[col], ts_mean, ts_std)
+                new_cols[z_name] = _safe_zscore(df[col], ts_mean, ts_std)
                 new_features.append(z_name)
 
             if rank_name not in df.columns:
-                df[rank_name] = ts_rank.astype(float)
+                new_cols[rank_name] = ts_rank.astype(float)
                 new_features.append(rank_name)
 
             if disp_name not in df.columns:
-                df[disp_name] = ts_std.astype(float)
+                new_cols[disp_name] = ts_std.astype(float)
                 new_features.append(disp_name)
 
             # ---------- relative to the row's group inside the same timestamp ----------
@@ -576,16 +576,19 @@ def add_cross_sectional_context_features(
                 group_gap_name = f"{col}_group_mean_minus_ts_mean"
 
                 if group_diff_name not in df.columns:
-                    df[group_diff_name] = df[col] - tsg_mean
+                    new_cols[group_diff_name] = (df[col] - tsg_mean).astype(float)
                     new_features.append(group_diff_name)
 
                 if group_z_name not in df.columns:
-                    df[group_z_name] = _safe_zscore(df[col], tsg_mean, tsg_std)
+                    new_cols[group_z_name] = _safe_zscore(df[col], tsg_mean, tsg_std)
                     new_features.append(group_z_name)
 
                 if group_gap_name not in df.columns:
-                    df[group_gap_name] = tsg_mean - ts_mean
+                    new_cols[group_gap_name] = (tsg_mean - ts_mean).astype(float)
                     new_features.append(group_gap_name)
+
+        if new_cols:
+            df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
         return df, new_features
 
